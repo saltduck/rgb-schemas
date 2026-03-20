@@ -7,7 +7,7 @@ categories = ["cryptography::cryptocurrencies"]
 authors = ["Zoe Faltibà <zoefaltiba@gmail.com>"]
 homepage = "https://rgb.info"
 repository = "https://github.com/rgb-protocol/rgb-schemas"
-rust-version = "1.82.0"
+rust-version = "1.85.0"
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
@@ -21,12 +21,12 @@ name = "schemata"
 
 [dependencies]
 amplify = "=4.8.1"
-rgb-strict-types = "~1.0.0"
-rgb-aluvm = "0.11.1-rc.1"
-rgb-ops = { version = "0.11.1-rc.7", features = ["fs"] }
+rgb-strict-types = "~1.0.1"
+rgb-aluvm = "0.11.1-rc.2"
+rgb-ops = { version = "0.11.1-rc.8", features = ["fs"] }
 
 [dev-dependencies]
-rgb-ops = { version = "0.11.1-rc.7", features = [
+rgb-ops = { version = "0.11.1-rc.8", features = [
     "fs",
     "serde",
 ] }
@@ -47,11 +47,3 @@ log = [
 fs = [
     "rgb-ops/fs",
 ]
-
-[patch.crates-io]
-rgb-strict-encoding = { git = "https://github.com/rgb-protocol/rgb-strict-encoding", branch = "master" }
-rgb-ascii-armor = { git = "https://github.com/rgb-protocol/rgb-ascii-armor", branch = "master" }
-rgb-strict-types = { git = "https://github.com/rgb-protocol/rgb-strict-types", branch = "master" }
-rgb-aluvm = { git = "https://github.com/rgb-protocol/rgb-aluvm", branch = "master" }
-rgb-consensus = { git = "https://github.com/rgb-protocol/rgb-consensus", branch = "master" }
-rgb-ops = { git = "https://github.com/rgb-protocol/rgb-ops", branch = "master" }
