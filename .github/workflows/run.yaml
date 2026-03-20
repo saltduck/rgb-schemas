@@ -5,12 +5,10 @@ on:
     branches:
       - master
     tags:
-      - 'v[0-9]+\.*'
+      - '*'
   pull_request:
     branches:
       - master
-      - develop
-      - 'v[0-9]+.[0-9]+'
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,6 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
       - run: cargo run --features fs
       - run: git diff --quiet || exit 1
