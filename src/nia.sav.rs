@@ -42,12 +42,12 @@ use strict_types::TypeSystem;
 
 use crate::{
     ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
-    OS_ASSET, TS_BL_TRANSFER, TS_TRANSFER,
+    OS_ASSET, TS_TRANSFER,
 };
 
 pub const NIA_SCHEMA_ID: SchemaId = SchemaId::from_array([
-    0xc8, 0xda, 0xc4, 0x43, 0x13, 0x78, 0xe2, 0x7b, 0x53, 0xc9, 0x9b, 0xda, 0x04, 0x2e, 0x72, 0xc3,
-    0x87, 0x0a, 0xef, 0x59, 0x55, 0x72, 0xb7, 0xa6, 0xb4, 0x2e, 0x1d, 0xb4, 0x57, 0x7f, 0x66, 0x60,
+    0x45, 0x68, 0x70, 0x51, 0xf4, 0xcc, 0xa6, 0xe3, 0xf6, 0x65, 0xfc, 0x75, 0xfe, 0x3e, 0x27, 0xb3,
+    0x00, 0x80, 0x34, 0x67, 0x89, 0xad, 0x83, 0xaa, 0x0d, 0xc2, 0x9e, 0x95, 0xa3, 0x15, 0xe3, 0x35,
 ]);
 
 pub(crate) fn nia_lib() -> Lib {
@@ -78,37 +78,8 @@ pub(crate) fn nia_lib() -> Lib {
     };
     Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong non-inflatable asset script")
 }
-
-pub(crate) fn nia_lib_bizlogic() -> Lib {
-    let code = rgbasm! {
-        // SUBROUTINE BL_Transfer validation
-        // total_from_payment_utxos: a64[0]
-        put     a16[0],0;
-        ldp     OS_ASSET,a16[0],s16[0];  
-        put     a16[1],0;
-        extr    s16[0],a64[0],a16[1];
-        // transfer_amount: a64[1]
-        put     a16[0],1;
-        ldp     OS_ASSET,a16[0],s16[1];
-        put     a16[1],0;
-        extr    s16[1],a64[1],a16[1];
-        // 保留转账额：a2 = a1
-        dup     a64[1],a64[2];
-        // a1 = total - transfer（找零）
-        sub.uw    a64[0],a64[1];
-
-        // 收款总额
-        outr    a64[1];
-        // 找零额
-        outr    a64[0];
-        ret;
-    };
-    Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong non-inflatable asset script")
-}
-
 pub(crate) const FN_NIA_GENESIS_OFFSET: u16 = 4 + 3 + 2;
 pub(crate) const FN_NIA_TRANSFER_OFFSET: u16 = 0;
-pub(crate) const FN_NIA_BL_TRANSFER_OFFSET: u16 = 0;
 
 fn nia_standard_types() -> StandardTypes { StandardTypes::with(rgb_contract_stl()) }
 
@@ -173,20 +144,6 @@ fn nia_schema() -> Schema {
                     validator: Some(LibSite::with(FN_NIA_TRANSFER_OFFSET, alu_id))
                 },
                 name: fname!("transfer"),
-            },
-            TS_BL_TRANSFER => TransitionDetails {
-                transition_schema: TransitionSchema {
-                    metadata: none!(),
-                    globals: none!(),
-                    inputs: tiny_bmap! {
-                        OS_ASSET => Occurrences::Exactly(2),  // 1.付款总额；2.转账额
-                    },
-                    assignments: tiny_bmap! {
-                        OS_ASSET => Occurrences::Exactly(2),    // 1.转账额；2.找零额
-                    },
-                    validator: Some(LibSite::with(FN_NIA_BL_TRANSFER_OFFSET, nia_lib_bizlogic().id()))
-                },
-                name: fname!("blTransfer"),
             }
         },
         default_assignment: Some(OS_ASSET),
@@ -204,12 +161,8 @@ impl IssuerWrapper for NonInflatableAsset {
     fn types() -> TypeSystem { nia_standard_types().type_system(nia_schema()) }
 
     fn scripts() -> Scripts {
-        let transfer_lib = nia_lib();
-        let bizlogic_lib = nia_lib_bizlogic();
-        Confined::from_checked(bmap! {
-            transfer_lib.id() => transfer_lib,
-            bizlogic_lib.id() => bizlogic_lib
-        })
+        let lib = nia_lib();
+        Confined::from_checked(bmap! { lib.id() => lib })
     }
 }
 
@@ -320,7 +273,7 @@ mod test {
 
         assert_eq!(
             contract.contract_id().to_string(),
-            s!("rgb:EeCgosxH-Zs7PkCU-1OCyxMI-ObIuc94-9jnAdE_-vbEpyI0")
+            s!("rgb:663wqep~-0pVYnjS-ieA0N3r-58wUTIY-zgCGO_1-QQkuMMs")
         );
     }
 }

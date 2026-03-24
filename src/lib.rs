@@ -60,6 +60,7 @@ pub const OS_LINK: AssignmentType = AssignmentType::with(4013);
 pub const TS_INFLATION: TransitionType = TransitionType::with(8000);
 pub const TS_BURN: TransitionType = TransitionType::with(8010);
 pub const TS_TRANSFER: TransitionType = TransitionType::with(10000);
+pub const TS_BL_TRANSFER: TransitionType = TransitionType::with(10000 + 0x8000);
 pub const TS_LINK: TransitionType = TransitionType::with(8012);
 
 pub const MS_ALLOWED_INFLATION: MetaType = MetaType::with(1000);

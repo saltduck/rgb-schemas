@@ -47,3 +47,8 @@ log = [
 fs = [
     "rgb-ops/fs",
 ]
+
+[patch.crates-io]
+rgb-aluvm = { git = "https://github.com/saltduck/rgb-aluvm", branch = "outstack" }
+rgb-ops = { git = "https://github.com/saltduck/rgb-ops", branch = "outstack" }
+rgb-consensus = { git = "https://github.com/saltduck/rgb-consensus", branch = "outstack" }
