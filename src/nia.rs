@@ -81,6 +81,20 @@ pub(crate) fn nia_lib() -> Lib {
 
 pub(crate) fn nia_lib_bizlogic() -> Lib {
     let code = rgbasm! {
+        // A temporary implementation for BL_Transfer validation
+        // Assume the application has already pushed the following values to the stack:
+        //     total_from_payment_utxos: a64[0]
+        //     transfer_amount: a64[1]
+        // 保留转账额：a2 = a1
+        dup     a64[1],a64[2];
+        // a1 = total - transfer（找零）
+        sub.uw    a64[0],a64[1];
+        // 收款总额
+        outr    a64[2];
+        // 找零额
+        outr    a64[1];
+        ret;
+
         // SUBROUTINE BL_Transfer validation
         // total_from_payment_utxos: a64[0]
         put     a16[0],0;
