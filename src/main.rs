@@ -28,7 +28,7 @@ use rgbstd::persistence::MemContract;
 use rgbstd::vm::RgbIsa;
 use schemata::{
     CollectibleFungibleAsset, InflatableFungibleAsset, NonInflatableAsset,
-    PermissionedFungibleAsset, UniqueDigitalAsset,
+    PermissionedFungibleAsset, UniqueDigitalAsset, AutoBurnNonInflatableAsset,
 };
 
 fn main() -> io::Result<()> {
@@ -37,6 +37,24 @@ fn main() -> io::Result<()> {
     nia()?;
     pfa()?;
     uda()?;
+    nia2()?;
+
+    Ok(())
+}
+
+fn nia2() -> io::Result<()> {
+    let schema = AutoBurnNonInflatableAsset::schema();
+    let lib = AutoBurnNonInflatableAsset::scripts();
+    let types = AutoBurnNonInflatableAsset::types();
+
+    let mut kit = Kit::default();
+    kit.schemata.push(schema).unwrap();
+    kit.scripts.extend(lib.into_values()).unwrap();
+    kit.types = types;
+
+    kit.save_file("schemata/AutoBurnNonInflatableAsset.rgb")?;
+    kit.save_armored("schemata/AutoBurnNonInflatableAsset.rgba")?;
+    print_lib(&kit);
 
     Ok(())
 }

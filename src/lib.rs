@@ -24,6 +24,7 @@ extern crate amplify;
 #[macro_use]
 extern crate strict_types;
 
+mod nia2;
 mod cfa;
 mod nia;
 mod pfa;
@@ -33,6 +34,7 @@ mod ifa;
 pub use cfa::{CfaWrapper, CollectibleFungibleAsset, CFA_SCHEMA_ID};
 pub use ifa::{IfaWrapper, InflatableFungibleAsset, IFA_SCHEMA_ID};
 pub use nia::{NiaWrapper, NonInflatableAsset, NIA_SCHEMA_ID};
+pub use nia2::{Nia2Wrapper, AutoBurnNonInflatableAsset, NIA2_SCHEMA_ID};
 pub use pfa::{PermissionedFungibleAsset, PfaWrapper, PFA_SCHEMA_ID};
 use rgbstd::{AssignmentType, GlobalStateType, MetaType, TransitionType};
 pub use uda::{UdaWrapper, UniqueDigitalAsset, UDA_SCHEMA_ID};
@@ -52,10 +54,12 @@ pub const GS_PRECISION: GlobalStateType = GlobalStateType::with(3005);
 pub const GS_TERMS: GlobalStateType = GlobalStateType::with(2001);
 pub const GS_TOKENS: GlobalStateType = GlobalStateType::with(2102);
 pub const GS_PUBKEY: GlobalStateType = GlobalStateType::with(3006);
+pub const GS_BURN_UTXO: GlobalStateType = GlobalStateType::with(3007);
 
 pub const OS_ASSET: AssignmentType = AssignmentType::with(4000);
 pub const OS_INFLATION: AssignmentType = AssignmentType::with(4010);
 pub const OS_LINK: AssignmentType = AssignmentType::with(4013);
+pub const OS_UTXO: AssignmentType = AssignmentType::with(4100);
 
 pub const TS_INFLATION: TransitionType = TransitionType::with(8000);
 pub const TS_BURN: TransitionType = TransitionType::with(8010);

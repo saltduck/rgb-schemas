@@ -1,0 +1,362 @@
+// RGB schemas
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Written in 2023-2024 by
+//     Dr Maxim Orlovsky <orlovsky@lnp-bp.org>
+//
+// Copyright (C) 2023-2024 LNP/BP Standards Association. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Non-Inflatable Assets (NIA) schema.
+
+use aluvm::isa::opcodes::INSTR_PUTA;
+use aluvm::isa::Instr;
+use aluvm::library::{Lib, LibSite};
+use amplify::confinement::Confined;
+use rgbstd::contract::{
+    AssignmentsFilter, ContractData, FungibleAllocation, IssuerWrapper, SchemaWrapper,
+};
+use rgbstd::persistence::{ContractStateRead, MemContract};
+use rgbstd::schema::{
+    AssignmentDetails, FungibleType, GenesisSchema, GlobalDetails, GlobalStateSchema, Occurrences,
+    OwnedStateSchema, Schema, TransitionSchema,
+};
+use rgbstd::stl::{rgb_contract_stl, AssetSpec, ContractTerms, StandardTypes};
+use rgbstd::validation::Scripts;
+use rgbstd::vm::opcodes::INSTR_SVS;
+use rgbstd::vm::RgbIsa;
+use rgbstd::{rgbasm, Amount, SchemaId, TransitionDetails};
+use strict_types::TypeSystem;
+
+use crate::{
+    ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
+    OS_ASSET, OS_UTXO, TS_BL_TRANSFER, TS_TRANSFER,
+};
+
+pub const NIA2_SCHEMA_ID: SchemaId = SchemaId::from_array([
+    0xc8, 0xda, 0xc4, 0x43, 0x13, 0x78, 0xe2, 0x7b, 0x53, 0xc9, 0x9b, 0xda, 0x04, 0x2e, 0x72, 0xc3,
+    0x87, 0x0a, 0xef, 0x59, 0x55, 0x72, 0xb7, 0xa6, 0xb4, 0x2e, 0x1d, 0xb4, 0x57, 0x7f, 0x66, 0x60,
+]);
+
+pub(crate) fn nia_lib() -> Lib {
+    let code = rgbasm! {
+        // SUBROUTINE Transfer validation
+        // Set errno
+        put     a8[0],ERRNO_NON_EQUAL_IN_OUT;
+        // Checking that the sum of inputs is equal to the sum of outputs.
+        svs     OS_ASSET;
+        test;
+        ret;
+
+        // SUBROUTINE Genesis validation
+        // Checking genesis assignments amount against reported amount of issued assets present in
+        // the global state.
+        put     a8[0],ERRNO_ISSUED_MISMATCH;
+        put     a8[1],0;
+        put     a16[0],0;
+        // Read global state into s16[0]
+        ldg     GS_ISSUED_SUPPLY,a8[1],s16[0];
+        // Extract 64 bits from the beginning of s16[0] into a64[0]
+        // NB: if the global state is invalid, we will fail here and fail the validation
+        extr    s16[0],a64[0],a16[0];
+        // verify sum of outputs against a64[0] value
+        sas     OS_ASSET;
+        test;
+        ret;
+    };
+    Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong non-inflatable asset script")
+}
+
+pub(crate) fn nia_lib_bizlogic() -> Lib {
+    let code = rgbasm! {
+        // A temporary implementation for BL_Transfer validation
+        // Assume the application has already pushed the following values to the stack:
+        //     total_from_payment_utxos: a64[0]
+        //     transfer_amount: a64[1]
+        // 销毁额 a3 = 转账额 / 100
+        put     a64[3],100;
+        div.uc  a64[1],a64[3];
+        ifz a64[3];
+        inv st0;
+        jif 0x0011;
+        put a64[3],1;
+        // 0x0011:
+        // 保留销毁额 a4 = 销毁额
+        dup     a64[3],a64[4];
+        // 转账额 a2 = a1 - 销毁额
+        sub.uc    a64[1],a64[3];
+        dup       a64[3],a64[2];
+        // （找零）a1 = total - transfer - burn
+        sub.uc    a64[0],a64[1];
+        // sub.uc    a64[1],a64[3];
+
+        put s16[0],"c5c3f8d1d75c39c1ff537f3f96286ab15fcd58ffdf2d66e9d869c52f55ddb35d"; // 销毁UTXO的txid
+        put a64[5],1;       // 销毁UTXO的vout
+
+        outr    a64[2];     // 收款总额        
+        outr    a64[1];     // 找零额
+        outr    a64[4];     // 销毁额
+        outr    s16[0];    
+        outr    a64[5];    
+        ret;
+
+        // SUBROUTINE BL_Transfer validation
+        // total_from_payment_utxos: a64[0]
+        put     a16[0],0;
+        ldp     OS_ASSET,a16[0],s16[0];  
+        put     a16[1],0;
+        extr    s16[0],a64[0],a16[1];
+        // transfer_amount: a64[1]
+        put     a16[0],1;
+        ldp     OS_ASSET,a16[0],s16[1];
+        put     a16[1],0;
+        extr    s16[1],a64[1],a16[1];
+        // 保留转账额：a2 = a1
+        dup     a64[1],a64[2];
+        // a1 = total - transfer（找零）
+        sub.uw    a64[0],a64[1];
+
+        // 收款总额
+        outr    a64[1];
+        // 找零额
+        outr    a64[0];
+        ret;
+    };
+    Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong non-inflatable asset script")
+}
+
+pub(crate) const FN_NIA_GENESIS_OFFSET: u16 = 4 + 3 + 2;
+pub(crate) const FN_NIA_TRANSFER_OFFSET: u16 = 0;
+pub(crate) const FN_NIA_BL_TRANSFER_OFFSET: u16 = 0;
+
+fn nia_standard_types() -> StandardTypes { StandardTypes::with(rgb_contract_stl()) }
+
+fn nia_schema() -> Schema {
+    let types = nia_standard_types();
+
+    let alu_lib = nia_lib();
+    let alu_id = alu_lib.id();
+    assert_eq!(alu_lib.code.as_ref()[FN_NIA_TRANSFER_OFFSET as usize + 4], INSTR_SVS);
+    assert_eq!(alu_lib.code.as_ref()[FN_NIA_GENESIS_OFFSET as usize], INSTR_PUTA);
+    assert_eq!(alu_lib.code.as_ref()[FN_NIA_GENESIS_OFFSET as usize + 4], INSTR_PUTA);
+    assert_eq!(alu_lib.code.as_ref()[FN_NIA_GENESIS_OFFSET as usize + 8], INSTR_PUTA);
+
+    Schema {
+        ffv: zero!(),
+        name: tn!("AutoBurnNonInflatableAsset"),
+        meta_types: none!(),
+        global_types: tiny_bmap! {
+            GS_NOMINAL => GlobalDetails {
+                global_state_schema: GlobalStateSchema::once(types.get("RGBContract.AssetSpec")),
+                name: fname!("spec"),
+            },
+            GS_TERMS => GlobalDetails {
+                global_state_schema: GlobalStateSchema::once(types.get("RGBContract.ContractTerms")),
+                name: fname!("terms"),
+            },
+            GS_ISSUED_SUPPLY => GlobalDetails {
+                global_state_schema: GlobalStateSchema::once(types.get("RGBContract.Amount")),
+                name: fname!("issuedSupply"),
+            },
+            // GS_BURN_UTXO => GlobalDetails {
+            //     global_state_schema: GlobalStateSchema::once(types.get("RGBContract.UTXO")),
+            //     name: fname!("burnUtxo"),
+            // },
+        },
+        owned_types: tiny_bmap! {
+            OS_ASSET => AssignmentDetails {
+                owned_state_schema: OwnedStateSchema::Fungible(FungibleType::Unsigned64Bit),
+                name: fname!("assetOwner"),
+                default_transition: TS_TRANSFER,
+            }
+        },
+        genesis: GenesisSchema {
+            metadata: none!(),
+            globals: tiny_bmap! {
+                GS_NOMINAL => Occurrences::Once,
+                GS_TERMS => Occurrences::Once,
+                GS_ISSUED_SUPPLY => Occurrences::Once,
+            },
+            assignments: tiny_bmap! {
+                OS_ASSET => Occurrences::OnceOrMore,
+            },
+            validator: Some(LibSite::with(FN_NIA_GENESIS_OFFSET, alu_id)),
+        },
+        transitions: tiny_bmap! {
+            TS_TRANSFER => TransitionDetails {
+                transition_schema: TransitionSchema {
+                    metadata: none!(),
+                    globals: none!(),
+                    inputs: tiny_bmap! {
+                        OS_ASSET => Occurrences::OnceOrMore
+                    },
+                    assignments: tiny_bmap! {
+                        OS_ASSET => Occurrences::OnceOrMore
+                    },
+                    validator: Some(LibSite::with(FN_NIA_TRANSFER_OFFSET, alu_id))
+                },
+                name: fname!("transfer"),
+            },
+            TS_BL_TRANSFER => TransitionDetails {
+                transition_schema: TransitionSchema {
+                    metadata: none!(),
+                    globals: none!(),
+                    inputs: tiny_bmap! {
+                        OS_ASSET => Occurrences::Exactly(2),    // 1.付款总额；2.转账额; 3.销毁额对应的UTXO
+                    },
+                    assignments: tiny_bmap! {
+                        OS_ASSET => Occurrences::Exactly(3),    // 1.转账额；2.找零额; 3.销毁额
+                        // OS_UTXO => Occurrences::Exactly(1),     // 销毁额对应的UTXO
+                    },
+                    validator: Some(LibSite::with(FN_NIA_BL_TRANSFER_OFFSET, nia_lib_bizlogic().id()))
+                },
+                name: fname!("blTransfer"),
+            }
+        },
+        default_assignment: Some(OS_ASSET),
+    }
+}
+
+#[derive(Default)]
+pub struct AutoBurnNonInflatableAsset;
+
+impl IssuerWrapper for AutoBurnNonInflatableAsset {
+    type Wrapper<S: ContractStateRead> = Nia2Wrapper<S>;
+
+    fn schema() -> Schema { nia_schema() }
+
+    fn types() -> TypeSystem { nia_standard_types().type_system(nia_schema()) }
+
+    fn scripts() -> Scripts {
+        let transfer_lib = nia_lib();
+        let bizlogic_lib = nia_lib_bizlogic();
+        Confined::from_checked(bmap! {
+            transfer_lib.id() => transfer_lib,
+            bizlogic_lib.id() => bizlogic_lib
+        })
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, From)]
+pub struct Nia2Wrapper<S: ContractStateRead>(ContractData<S>);
+
+impl<S: ContractStateRead> SchemaWrapper<S> for Nia2Wrapper<S> {
+    fn with(data: ContractData<S>) -> Self {
+        if data.schema.schema_id() != NIA2_SCHEMA_ID {
+            panic!("the provided schema is not NIA");
+        }
+        Self(data)
+    }
+}
+
+impl<S: ContractStateRead> Nia2Wrapper<S> {
+    pub fn spec(&self) -> AssetSpec {
+        let strict_val = &self
+            .0
+            .global("spec")
+            .next()
+            .expect("NIA requires global state `spec` to have at least one item");
+        AssetSpec::from_strict_val_unchecked(strict_val)
+    }
+
+    pub fn contract_terms(&self) -> ContractTerms {
+        let strict_val = &self
+            .0
+            .global("terms")
+            .next()
+            .expect("NIA requires global state `terms` to have at least one item");
+        ContractTerms::from_strict_val_unchecked(strict_val)
+    }
+
+    pub fn total_issued_supply(&self) -> Amount {
+        self.0
+            .global("issuedSupply")
+            .map(|amount| Amount::from_strict_val_unchecked(&amount))
+            .sum()
+    }
+
+    pub fn allocations<'c>(
+        &'c self,
+        filter: impl AssignmentsFilter + 'c,
+    ) -> impl Iterator<Item = FungibleAllocation> + 'c {
+        self.0.fungible_raw(OS_ASSET, filter).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use rgbstd::containers::{BuilderSeal, ConsignmentExt};
+    use rgbstd::contract::*;
+    use rgbstd::invoice::Precision;
+    use rgbstd::stl::*;
+    use rgbstd::txout::BlindSeal;
+    use rgbstd::*;
+
+    use super::*;
+
+    #[test]
+    fn schema_id() {
+        let schema_id = nia_schema().schema_id();
+        eprintln!("{:#04x?}", schema_id.to_byte_array());
+        assert_eq!(NIA2_SCHEMA_ID, schema_id);
+    }
+
+    #[test]
+    fn deterministic_contract_id() {
+        let created_at = 1713261744;
+        let terms = ContractTerms {
+            text: RicardianContract::default(),
+            media: None,
+        };
+        let spec = AssetSpec {
+            ticker: Ticker::from("TICKER"),
+            name: Name::from("NAME"),
+            details: None,
+            precision: Precision::try_from(2).unwrap(),
+        };
+        let issued_supply = 999u64;
+        let seal: BlindSeal<Txid> = GenesisSeal::from(BlindSeal::with_blinding(
+            Txid::from_str("8d54c98d4c29a1ec4fd90635f543f0f7a871a78eb6a6e706342f831d92e3ba19")
+                .unwrap(),
+            0,
+            654321,
+        ));
+
+        let builder = ContractBuilder::with(
+            Identity::default(),
+            AutoBurnNonInflatableAsset::schema(),
+            AutoBurnNonInflatableAsset::types(),
+            AutoBurnNonInflatableAsset::scripts(),
+            ChainNet::BitcoinTestnet4,
+        )
+        .add_global_state("spec", spec)
+        .unwrap()
+        .add_global_state("terms", terms)
+        .unwrap()
+        .add_global_state("issuedSupply", Amount::from(issued_supply))
+        .unwrap()
+        .add_fungible_state("assetOwner", BuilderSeal::from(seal), issued_supply)
+        .unwrap();
+
+        let contract = builder.issue_contract_raw(created_at).unwrap();
+
+        assert_eq!(
+            contract.contract_id().to_string(),
+            s!("rgb:EeCgosxH-Zs7PkCU-1OCyxMI-ObIuc94-9jnAdE_-vbEpyI0")
+        );
+    }
+}
