@@ -42,7 +42,7 @@ use strict_types::TypeSystem;
 
 use crate::{
     ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
-    OS_ASSET, OS_UTXO, TS_BL_TRANSFER, TS_TRANSFER,
+    OS_ASSET, TS_BL_TRANSFER, TS_TRANSFER,
 };
 
 pub const NIA2_SCHEMA_ID: SchemaId = SchemaId::from_array([
@@ -81,6 +81,9 @@ pub(crate) fn nia_lib() -> Lib {
 
 pub(crate) fn nia_lib_bizlogic() -> Lib {
     let code = rgbasm! {
+        // return data ABI, hjson string
+        put s16[0], "benifery,change,owner,amount";
+        outr s16[0];
         // A temporary implementation for BL_Transfer validation
         // Assume the application has already pushed the following values to the stack:
         //     total_from_payment_utxos: a64[0]
@@ -90,9 +93,9 @@ pub(crate) fn nia_lib_bizlogic() -> Lib {
         div.uc  a64[1],a64[3];
         ifz a64[3];
         inv st0;
-        jif 0x0011;
+        jif 0x0019;
         put a64[3],1;
-        // 0x0011:
+        // 0x0019:
         // 保留销毁额 a4 = 销毁额
         dup     a64[3],a64[4];
         // 转账额 a2 = a1 - 销毁额
@@ -102,14 +105,12 @@ pub(crate) fn nia_lib_bizlogic() -> Lib {
         sub.uc    a64[0],a64[1];
         // sub.uc    a64[1],a64[3];
 
-        put s16[0],"c5c3f8d1d75c39c1ff537f3f96286ab15fcd58ffdf2d66e9d869c52f55ddb35d"; // 销毁UTXO的txid
-        put a64[5],1;       // 销毁UTXO的vout
+        put s16[1],"c5c3f8d1d75c39c1ff537f3f96286ab15fcd58ffdf2d66e9d869c52f55ddb35d:1"; // 销毁UTXO
 
         outr    a64[2];     // 收款总额        
         outr    a64[1];     // 找零额
+        outr    s16[1];     // 销毁UTXO
         outr    a64[4];     // 销毁额
-        outr    s16[0];    
-        outr    a64[5];    
         ret;
 
         // SUBROUTINE BL_Transfer validation
@@ -216,10 +217,7 @@ fn nia_schema() -> Schema {
                     inputs: tiny_bmap! {
                         OS_ASSET => Occurrences::Exactly(2),    // 1.付款总额；2.转账额; 3.销毁额对应的UTXO
                     },
-                    assignments: tiny_bmap! {
-                        OS_ASSET => Occurrences::Exactly(3),    // 1.转账额；2.找零额; 3.销毁额
-                        // OS_UTXO => Occurrences::Exactly(1),     // 销毁额对应的UTXO
-                    },
+                    assignments: none!(),
                     validator: Some(LibSite::with(FN_NIA_BL_TRANSFER_OFFSET, nia_lib_bizlogic().id()))
                 },
                 name: fname!("blTransfer"),

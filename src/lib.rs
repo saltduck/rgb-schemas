@@ -59,7 +59,6 @@ pub const GS_BURN_UTXO: GlobalStateType = GlobalStateType::with(3007);
 pub const OS_ASSET: AssignmentType = AssignmentType::with(4000);
 pub const OS_INFLATION: AssignmentType = AssignmentType::with(4010);
 pub const OS_LINK: AssignmentType = AssignmentType::with(4013);
-pub const OS_UTXO: AssignmentType = AssignmentType::with(4100);
 
 pub const TS_INFLATION: TransitionType = TransitionType::with(8000);
 pub const TS_BURN: TransitionType = TransitionType::with(8010);
