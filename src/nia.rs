@@ -273,7 +273,7 @@ mod test {
 
         assert_eq!(
             contract.contract_id().to_string(),
-            s!("rgb:663wqep~-0pVYnjS-ieA0N3r-58wUTIY-zgCGO_1-QQkuMMs")
+            s!("rgb:h5983aUd-eU4tYlm-D16I1XW-3GVZxx8-fzyPfaq-mK~qqMI")
         );
     }
 }

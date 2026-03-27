@@ -32,11 +32,11 @@ use schemata::{
 };
 
 fn main() -> io::Result<()> {
-    cfa()?;
-    ifa()?;
-    nia()?;
-    pfa()?;
-    uda()?;
+    // cfa()?;
+    // ifa()?;
+    // nia()?;
+    // pfa()?;
+    // uda()?;
     nia2()?;
 
     Ok(())

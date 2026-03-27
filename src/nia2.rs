@@ -37,18 +37,133 @@ use rgbstd::stl::{rgb_contract_stl, AssetSpec, ContractTerms, StandardTypes};
 use rgbstd::validation::Scripts;
 use rgbstd::vm::opcodes::INSTR_SVS;
 use rgbstd::vm::RgbIsa;
-use rgbstd::{rgbasm, Amount, SchemaId, TransitionDetails};
+use rgbstd::{Amount, SchemaId, TransitionDetails, rgbasm};
 use strict_types::TypeSystem;
 
 use crate::{
-    ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
-    OS_ASSET, TS_BL_TRANSFER, TS_TRANSFER,
+    ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, 
+    GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
+    OS_ASSET, 
+    TS_INTERFACE,TS_BL_TRANSFER, TS_TRANSFER,
 };
 
 pub const NIA2_SCHEMA_ID: SchemaId = SchemaId::from_array([
     0xc8, 0xda, 0xc4, 0x43, 0x13, 0x78, 0xe2, 0x7b, 0x53, 0xc9, 0x9b, 0xda, 0x04, 0x2e, 0x72, 0xc3,
     0x87, 0x0a, 0xef, 0x59, 0x55, 0x72, 0xb7, 0xa6, 0xb4, 0x2e, 0x1d, 0xb4, 0x57, 0x7f, 0x66, 0x60,
 ]);
+
+use num_bigint::BigUint;
+use num_traits::{Zero, ToPrimitive};
+
+const ALPHABET: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+fn hash256_to_base62(hash: [u8; 32]) -> String {
+    let mut n = BigUint::from_bytes_be(&hash);
+    if n.is_zero() {
+        return "0".to_string();
+    }
+
+    let base = BigUint::from(62u32);
+    let mut out = Vec::new();
+
+    while !n.is_zero() {
+        let rem = (&n % &base).to_u8().unwrap() as usize;
+        out.push(ALPHABET[rem] as char);
+        n /= &base;
+    }
+
+    out.iter().rev().collect()
+}
+
+#[inline(always)]
+fn strip_spaces_and_newlines(input: &str) -> &str {
+    let bytes = input.as_bytes();
+    let mut start = 0;
+    let mut end = bytes.len();
+
+    while start < end && matches!(bytes[start], b' ' | b'\n') {
+        start += 1;
+    }
+
+    while end > start && matches!(bytes[end - 1], b' ' | b'\n') {
+        end -= 1;
+    }
+
+    &input[start..end]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_spaces_and_newlines;
+
+    #[test]
+    fn test_strip_spaces_and_newlines_basic() {
+        assert_eq!(strip_spaces_and_newlines("  abc  "), "abc");
+        assert_eq!(strip_spaces_and_newlines("\nabc\n"), "abc");
+        assert_eq!(strip_spaces_and_newlines("  abc\n"), "abc");
+        assert_eq!(strip_spaces_and_newlines("\n  abc  \n"), "abc");
+        assert_eq!(strip_spaces_and_newlines("abc"), "abc");
+        assert_eq!(strip_spaces_and_newlines("   "), "");
+        assert_eq!(strip_spaces_and_newlines("\n\n"), "");
+        assert_eq!(strip_spaces_and_newlines(""), "");
+    }
+
+    #[test]
+    fn test_strip_spaces_and_newlines_mixed() {
+        assert_eq!(strip_spaces_and_newlines("  \n  xyz   \n"), "xyz");
+        assert_eq!(strip_spaces_and_newlines("  \n  xyz   \n123\n "), "xyz   \n123");
+        assert_eq!(strip_spaces_and_newlines("\nhello world\n"), "hello world");
+    }
+
+    #[test]
+    fn test_strip_spaces_and_newlines_with_internal_spaces() {
+        assert_eq!(strip_spaces_and_newlines("a b c"), "a b c");
+        assert_eq!(strip_spaces_and_newlines("   a b c   "), "a b c");
+        assert_eq!(strip_spaces_and_newlines("\n   a b c   \n"), "a b c");
+    }
+}
+
+pub(crate) fn nia2_lib_interface() -> Lib {
+    let interface_abi = strip_spaces_and_newlines(r#"{
+        "Transfer": {
+            "parameters": [
+                {
+                    "name": "amount",
+                    "type": OS_ASSET
+                },
+                {
+                    "name": "change",
+                    "type": OS_ASSET
+            ],
+            "returns": [
+                {
+                    "name": "benifery",
+                    "type": OS_ASSET
+                },
+                {
+                    "name": "change",
+                    "type": OS_ASSET
+                },
+                {
+                    "name": "owner",
+                    "type": OS_OUTPOINT
+                },
+                {
+                    "name": "amount",
+                    "type": OS_ASSET
+                }
+            ]
+        }
+    }"#);
+
+    let code = rgbasm! {
+        // return data ABI, hjson string
+        put s16[0],interface_abi;
+        outr s16[0];
+        ret;
+    };
+    Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong interface script")
+}
 
 pub(crate) fn nia_lib() -> Lib {
     let code = rgbasm! {
@@ -171,10 +286,6 @@ fn nia_schema() -> Schema {
                 global_state_schema: GlobalStateSchema::once(types.get("RGBContract.Amount")),
                 name: fname!("issuedSupply"),
             },
-            // GS_BURN_UTXO => GlobalDetails {
-            //     global_state_schema: GlobalStateSchema::once(types.get("RGBContract.UTXO")),
-            //     name: fname!("burnUtxo"),
-            // },
         },
         owned_types: tiny_bmap! {
             OS_ASSET => AssignmentDetails {
@@ -196,6 +307,21 @@ fn nia_schema() -> Schema {
             validator: Some(LibSite::with(FN_NIA_GENESIS_OFFSET, alu_id)),
         },
         transitions: tiny_bmap! {
+            TS_INTERFACE => TransitionDetails {
+                transition_schema: TransitionSchema {
+                    metadata: none!(),
+                    globals: none!(),
+                    inputs: tiny_bmap! {
+                        // useless, just for building the schema
+                        OS_ASSET => Occurrences::OnceOrMore,
+                    },
+                    assignments: none!(),
+                    // validator: Some(LibSite::with(0, LibId::from([0; 32]))),
+                    validator: Some(LibSite::with(0, nia2_lib_interface().id())),
+                },
+                // name: fname!("interface"),
+                name: fname!("interface".to_owned()+&hash256_to_base62(nia2_lib_interface().id().to_byte_array())),
+            },
             TS_TRANSFER => TransitionDetails {
                 transition_schema: TransitionSchema {
                     metadata: none!(),
@@ -238,9 +364,11 @@ impl IssuerWrapper for AutoBurnNonInflatableAsset {
     fn types() -> TypeSystem { nia_standard_types().type_system(nia_schema()) }
 
     fn scripts() -> Scripts {
+        let interface_lib = nia2_lib_interface();
         let transfer_lib = nia_lib();
         let bizlogic_lib = nia_lib_bizlogic();
         Confined::from_checked(bmap! {
+            interface_lib.id() => interface_lib,
             transfer_lib.id() => transfer_lib,
             bizlogic_lib.id() => bizlogic_lib
         })
@@ -354,7 +482,7 @@ mod test {
 
         assert_eq!(
             contract.contract_id().to_string(),
-            s!("rgb:EeCgosxH-Zs7PkCU-1OCyxMI-ObIuc94-9jnAdE_-vbEpyI0")
+            s!("rgb:J0wQQNFl-IiK4JG6-kqHg~hz-OZ3ik73-~uZuCCu-6_xwfwo")
         );
     }
 }
