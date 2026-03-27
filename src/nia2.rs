@@ -43,7 +43,7 @@ use strict_types::TypeSystem;
 use crate::{
     ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, 
     GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
-    OS_ASSET, 
+    OS_ASSET, OS_OUTPOINT,
     TS_INTERFACE,TS_BL_TRANSFER, TS_TRANSFER,
 };
 
@@ -75,86 +75,40 @@ fn hash256_to_base62(hash: [u8; 32]) -> String {
     out.iter().rev().collect()
 }
 
-#[inline(always)]
-fn strip_spaces_and_newlines(input: &str) -> &str {
-    let bytes = input.as_bytes();
-    let mut start = 0;
-    let mut end = bytes.len();
-
-    while start < end && matches!(bytes[start], b' ' | b'\n') {
-        start += 1;
-    }
-
-    while end > start && matches!(bytes[end - 1], b' ' | b'\n') {
-        end -= 1;
-    }
-
-    &input[start..end]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::strip_spaces_and_newlines;
-
-    #[test]
-    fn test_strip_spaces_and_newlines_basic() {
-        assert_eq!(strip_spaces_and_newlines("  abc  "), "abc");
-        assert_eq!(strip_spaces_and_newlines("\nabc\n"), "abc");
-        assert_eq!(strip_spaces_and_newlines("  abc\n"), "abc");
-        assert_eq!(strip_spaces_and_newlines("\n  abc  \n"), "abc");
-        assert_eq!(strip_spaces_and_newlines("abc"), "abc");
-        assert_eq!(strip_spaces_and_newlines("   "), "");
-        assert_eq!(strip_spaces_and_newlines("\n\n"), "");
-        assert_eq!(strip_spaces_and_newlines(""), "");
-    }
-
-    #[test]
-    fn test_strip_spaces_and_newlines_mixed() {
-        assert_eq!(strip_spaces_and_newlines("  \n  xyz   \n"), "xyz");
-        assert_eq!(strip_spaces_and_newlines("  \n  xyz   \n123\n "), "xyz   \n123");
-        assert_eq!(strip_spaces_and_newlines("\nhello world\n"), "hello world");
-    }
-
-    #[test]
-    fn test_strip_spaces_and_newlines_with_internal_spaces() {
-        assert_eq!(strip_spaces_and_newlines("a b c"), "a b c");
-        assert_eq!(strip_spaces_and_newlines("   a b c   "), "a b c");
-        assert_eq!(strip_spaces_and_newlines("\n   a b c   \n"), "a b c");
-    }
-}
-
 pub(crate) fn nia2_lib_interface() -> Lib {
-    let interface_abi = strip_spaces_and_newlines(r#"{
-        "Transfer": {
+    let interface_abi = &format!(r#"
+    {{
+        "Transfer": {{
             "parameters": [
-                {
+                {{
                     "name": "amount",
-                    "type": OS_ASSET
-                },
-                {
+                    "type": {OS_ASSET}
+                }},
+                {{
                     "name": "change",
-                    "type": OS_ASSET
+                    "type": {OS_ASSET}
+                }}
             ],
             "returns": [
-                {
+                {{
                     "name": "benifery",
-                    "type": OS_ASSET
-                },
-                {
+                    "type": {OS_ASSET}
+                }},
+                {{
                     "name": "change",
-                    "type": OS_ASSET
-                },
-                {
+                    "type": {OS_ASSET}
+                }},
+                {{
                     "name": "owner",
-                    "type": OS_OUTPOINT
-                },
-                {
+                    "type": {OS_OUTPOINT}
+                }},
+                {{
                     "name": "amount",
-                    "type": OS_ASSET
-                }
+                    "type": {OS_ASSET}
+                }}
             ]
-        }
-    }"#);
+        }}
+    }}"#);
 
     let code = rgbasm! {
         // return data ABI, hjson string
