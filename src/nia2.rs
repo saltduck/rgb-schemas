@@ -76,16 +76,15 @@ fn hash256_to_base62(hash: [u8; 32]) -> String {
 }
 
 pub(crate) fn nia2_lib_interface() -> Lib {
-    let interface_abi = &format!(r#"
-    {{
-        "Transfer": {{
+    let interface_abi = &format!(r#"{{
+        "transfer": {{
             "parameters": [
                 {{
-                    "name": "amount",
+                    "name": "inputs",
                     "type": {OS_ASSET}
                 }},
                 {{
-                    "name": "change",
+                    "name": "amount",
                     "type": {OS_ASSET}
                 }}
             ],
