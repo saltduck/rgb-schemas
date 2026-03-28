@@ -158,9 +158,9 @@ pub(crate) fn nia_lib_bizlogic() -> Lib {
         div.uc  a64[1],a64[3];
         ifz a64[3];
         inv st0;
-        jif 0x0019;
+        jif 0x0011;
         put a64[3],1;
-        // 0x0019:
+        // 0x0011:
         // 保留销毁额 a4 = 销毁额
         dup     a64[3],a64[4];
         // 转账额 a2 = a1 - 销毁额

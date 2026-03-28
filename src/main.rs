@@ -145,9 +145,11 @@ fn ifa() -> io::Result<()> {
 }
 
 fn print_lib(kit: &Kit) {
-    let alu_lib = kit.scripts.first().unwrap();
-    eprintln!("{alu_lib}");
-    alu_lib
-        .print_disassemble::<RgbIsa<MemContract>>(stdout())
-        .unwrap();
+    for alu_lib in kit.scripts.iter() {
+        // let alu_lib = kit.scripts.first().unwrap();
+        eprintln!("{alu_lib}");
+        alu_lib
+            .print_disassemble::<RgbIsa<MemContract>>(stdout())
+            .unwrap();
+    }
 }
