@@ -149,9 +149,6 @@ pub(crate) fn nia_lib() -> Lib {
 
 pub(crate) fn nia_lib_bizlogic() -> Lib {
     let code = rgbasm! {
-        // return data ABI, hjson string
-        put s16[0], "benifery,change,owner,amount";
-        outr s16[0];
         // A temporary implementation for BL_Transfer validation
         // Assume the application has already pushed the following values to the stack:
         //     total_from_payment_utxos: a64[0]
