@@ -43,13 +43,13 @@ use strict_types::TypeSystem;
 
 use crate::{
     ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
-    OS_ASSET, OS_OUTPOINT, TS_INTERFACE, TS_TRANSFER,
+    OS_ASSET, TS_INTERFACE, TS_TRANSFER,
 };
 
 pub const NIA2_SCHEMA_ID: SchemaId = SchemaId::from_array([
-    0x41, 0x85, 0xf3, 0x99, 0x1d, 0xf8, 0x7d, 0x07, 0x94, 0x98, 0xf1, 0x69, 0xf9, 0xdd,
-    0x98, 0x4c, 0xf7, 0xf4, 0x81, 0xe5, 0x8f, 0x82, 0x2e, 0xd9, 0x32, 0x69, 0x30, 0x68,
-    0xef, 0x53, 0x1d, 0x84,
+    0x2f, 0x61, 0x07, 0x8a, 0xee, 0xd0, 0xc3, 0x05, 0x0d, 0xe1, 0xa9, 0x73, 0xc3, 0x44,
+    0x07, 0xb4, 0x86, 0x10, 0x00, 0xb4, 0x9e, 0x3e, 0x85, 0x94, 0x93, 0xd0, 0x77, 0x12,
+    0xa8, 0x5a, 0xa1, 0xc6,
 ]);
 
 pub(crate) const FN_NIA_BL_TRANSFER_OFFSET: u16 = 9;
@@ -106,12 +106,7 @@ pub(crate) fn nia2_lib_interface() -> Lib {
                     "type": OS_ASSET.into_inner()
                 },
                 {
-                    "name": "owner",
-                    "reg": "outpoint",
-                    "type": OS_OUTPOINT.into_inner()
-                },
-                {
-                    "name": "amount",
+                    "name": "owner_state",
                     "reg": "a64",
                     "type": OS_ASSET.into_inner()
                 }
@@ -428,7 +423,7 @@ mod test {
 
         assert_eq!(
             contract.contract_id().to_string(),
-            s!("rgb:PKL2h6~d-3y8oRQS-kBtGp1O-jGKcEgf-weH~8Pu-gGXsPfs")
+            s!("rgb:VfuwhrgK-WXFC2~I-Ces3VFr-6wInXI~-PFDMFkX-NNQ_kAA")
         );
     }
 }
