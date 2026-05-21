@@ -25,6 +25,7 @@ use aluvm::isa::opcodes::INSTR_PUTA;
 use aluvm::isa::Instr;
 use aluvm::library::{Lib, LibSite};
 use amplify::confinement::Confined;
+use amplify::Wrapper;
 use rgbstd::contract::{
     AssignmentsFilter, ContractData, FungibleAllocation, IssuerWrapper, SchemaWrapper,
 };
@@ -37,23 +38,25 @@ use rgbstd::stl::{rgb_contract_stl, AssetSpec, ContractTerms, StandardTypes};
 use rgbstd::validation::Scripts;
 use rgbstd::vm::opcodes::INSTR_SVS;
 use rgbstd::vm::RgbIsa;
-use rgbstd::{Amount, SchemaId, TransitionDetails, rgbasm};
+use rgbstd::{rgbasm, Amount, SchemaId, TransitionDetails};
 use strict_types::TypeSystem;
 
 use crate::{
-    ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, 
-    GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
-    OS_ASSET, OS_OUTPOINT,
-    TS_INTERFACE,TS_BL_TRANSFER, TS_TRANSFER,
+    ERRNO_ISSUED_MISMATCH, ERRNO_NON_EQUAL_IN_OUT, GS_ISSUED_SUPPLY, GS_NOMINAL, GS_TERMS,
+    OS_ASSET, OS_OUTPOINT, TS_INTERFACE, TS_TRANSFER,
 };
 
 pub const NIA2_SCHEMA_ID: SchemaId = SchemaId::from_array([
-    0xc8, 0xda, 0xc4, 0x43, 0x13, 0x78, 0xe2, 0x7b, 0x53, 0xc9, 0x9b, 0xda, 0x04, 0x2e, 0x72, 0xc3,
-    0x87, 0x0a, 0xef, 0x59, 0x55, 0x72, 0xb7, 0xa6, 0xb4, 0x2e, 0x1d, 0xb4, 0x57, 0x7f, 0x66, 0x60,
+    0x41, 0x85, 0xf3, 0x99, 0x1d, 0xf8, 0x7d, 0x07, 0x94, 0x98, 0xf1, 0x69, 0xf9, 0xdd,
+    0x98, 0x4c, 0xf7, 0xf4, 0x81, 0xe5, 0x8f, 0x82, 0x2e, 0xd9, 0x32, 0x69, 0x30, 0x68,
+    0xef, 0x53, 0x1d, 0x84,
 ]);
 
+pub(crate) const FN_NIA_BL_TRANSFER_OFFSET: u16 = 9;
+pub(crate) const FN_NIA_BL_TRANSFER_DOBURN_OFFSET: u16 = 9 + 0x11;
+
 use num_bigint::BigUint;
-use num_traits::{Zero, ToPrimitive};
+use num_traits::{ToPrimitive, Zero};
 
 const ALPHABET: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
@@ -76,43 +79,101 @@ fn hash256_to_base62(hash: [u8; 32]) -> String {
 }
 
 pub(crate) fn nia2_lib_interface() -> Lib {
-    let interface_abi = &format!(r#"{{
-        "transfer": {{
+    let interface_json = serde_json::json!({
+        "transfer": {
+            "script": {
+                "position": FN_NIA_BL_TRANSFER_OFFSET
+            },
             "parameters": [
-                {{
+                {
                     "name": "inputs",
-                    "type": {OS_ASSET}
-                }},
-                {{
+                    "reg": "a64"
+                },
+                {
                     "name": "amount",
-                    "type": {OS_ASSET}
-                }}
+                    "reg": "a64"
+                }
             ],
             "returns": [
-                {{
+                {
                     "name": "benifery",
-                    "type": {OS_ASSET}
-                }},
-                {{
+                    "reg": "a64",
+                    "type": OS_ASSET.into_inner()
+                },
+                {
                     "name": "change",
-                    "type": {OS_ASSET}
-                }},
-                {{
+                    "reg": "a64",
+                    "type": OS_ASSET.into_inner()
+                },
+                {
                     "name": "owner",
-                    "type": {OS_OUTPOINT}
-                }},
-                {{
+                    "reg": "outpoint",
+                    "type": OS_OUTPOINT.into_inner()
+                },
+                {
                     "name": "amount",
-                    "type": {OS_ASSET}
-                }}
+                    "reg": "a64",
+                    "type": OS_ASSET.into_inner()
+                }
             ]
-        }}
-    }}"#);
+        }
+    });
+    let interface_abi = serde_json::to_string(&interface_json).unwrap();
 
     let code = rgbasm! {
         // return data ABI, hjson string
         put s16[0],interface_abi;
         outr s16[0];
+        ret;
+        // A temporary implementation for BL_Transfer validation
+        // Assume the application has already pushed the following values to the stack:
+        //     total_from_payment_utxos: a64[0]
+        //     transfer_amount: a64[1]
+        // 销毁额 a3 = 转账额 / 100
+        put     a64[3],100;
+        div.uc  a64[1],a64[3];
+        ifz a64[3];
+        inv st0;
+        jif FN_NIA_BL_TRANSFER_DOBURN_OFFSET;
+        put a64[3],1;
+        // FN_NIA_BL_TRANSFER_DOBURN_OFFSET:
+        // 保留销毁额 a4 = 销毁额
+        dup     a64[3],a64[4];
+        // 转账额 a2 = a1 - 销毁额
+        sub.uc    a64[1],a64[3];
+        dup       a64[3],a64[2];
+        // （找零）a1 = total - transfer - burn
+        sub.uc    a64[0],a64[1];
+        // sub.uc    a64[1],a64[3];
+
+        put s16[1],"c5c3f8d1d75c39c1ff537f3f96286ab15fcd58ffdf2d66e9d869c52f55ddb35d:1"; // 销毁UTXO
+
+        outr    a64[2];     // 收款总额
+        outr    a64[1];     // 找零额
+        outr    s16[1];     // 销毁UTXO
+        outr    a64[4];     // 销毁额
+        ret;
+
+        // SUBROUTINE BL_Transfer validation
+        // total_from_payment_utxos: a64[0]
+        put     a16[0],0;
+        ldp     OS_ASSET,a16[0],s16[0];
+        put     a16[1],0;
+        extr    s16[0],a64[0],a16[1];
+        // transfer_amount: a64[1]
+        put     a16[0],1;
+        ldp     OS_ASSET,a16[0],s16[1];
+        put     a16[1],0;
+        extr    s16[1],a64[1],a16[1];
+        // 保留转账额：a2 = a1
+        dup     a64[1],a64[2];
+        // a1 = total - transfer（找零）
+        sub.uw    a64[0],a64[1];
+
+        // 收款总额
+        outr    a64[1];
+        // 找零额
+        outr    a64[0];
         ret;
     };
     Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong interface script")
@@ -147,67 +208,12 @@ pub(crate) fn nia_lib() -> Lib {
     Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong non-inflatable asset script")
 }
 
-pub(crate) fn nia_lib_bizlogic() -> Lib {
-    let code = rgbasm! {
-        // A temporary implementation for BL_Transfer validation
-        // Assume the application has already pushed the following values to the stack:
-        //     total_from_payment_utxos: a64[0]
-        //     transfer_amount: a64[1]
-        // 销毁额 a3 = 转账额 / 100
-        put     a64[3],100;
-        div.uc  a64[1],a64[3];
-        ifz a64[3];
-        inv st0;
-        jif 0x0011;
-        put a64[3],1;
-        // 0x0011:
-        // 保留销毁额 a4 = 销毁额
-        dup     a64[3],a64[4];
-        // 转账额 a2 = a1 - 销毁额
-        sub.uc    a64[1],a64[3];
-        dup       a64[3],a64[2];
-        // （找零）a1 = total - transfer - burn
-        sub.uc    a64[0],a64[1];
-        // sub.uc    a64[1],a64[3];
-
-        put s16[1],"c5c3f8d1d75c39c1ff537f3f96286ab15fcd58ffdf2d66e9d869c52f55ddb35d:1"; // 销毁UTXO
-
-        outr    a64[2];     // 收款总额        
-        outr    a64[1];     // 找零额
-        outr    s16[1];     // 销毁UTXO
-        outr    a64[4];     // 销毁额
-        ret;
-
-        // SUBROUTINE BL_Transfer validation
-        // total_from_payment_utxos: a64[0]
-        put     a16[0],0;
-        ldp     OS_ASSET,a16[0],s16[0];  
-        put     a16[1],0;
-        extr    s16[0],a64[0],a16[1];
-        // transfer_amount: a64[1]
-        put     a16[0],1;
-        ldp     OS_ASSET,a16[0],s16[1];
-        put     a16[1],0;
-        extr    s16[1],a64[1],a16[1];
-        // 保留转账额：a2 = a1
-        dup     a64[1],a64[2];
-        // a1 = total - transfer（找零）
-        sub.uw    a64[0],a64[1];
-
-        // 收款总额
-        outr    a64[1];
-        // 找零额
-        outr    a64[0];
-        ret;
-    };
-    Lib::assemble::<Instr<RgbIsa<MemContract>>>(&code).expect("wrong non-inflatable asset script")
-}
-
 pub(crate) const FN_NIA_GENESIS_OFFSET: u16 = 4 + 3 + 2;
 pub(crate) const FN_NIA_TRANSFER_OFFSET: u16 = 0;
-pub(crate) const FN_NIA_BL_TRANSFER_OFFSET: u16 = 0;
 
-fn nia_standard_types() -> StandardTypes { StandardTypes::with(rgb_contract_stl()) }
+fn nia_standard_types() -> StandardTypes {
+    StandardTypes::with(rgb_contract_stl())
+}
 
 fn nia_schema() -> Schema {
     let types = nia_standard_types();
@@ -285,18 +291,6 @@ fn nia_schema() -> Schema {
                     validator: Some(LibSite::with(FN_NIA_TRANSFER_OFFSET, alu_id))
                 },
                 name: fname!("transfer"),
-            },
-            TS_BL_TRANSFER => TransitionDetails {
-                transition_schema: TransitionSchema {
-                    metadata: none!(),
-                    globals: none!(),
-                    inputs: tiny_bmap! {
-                        OS_ASSET => Occurrences::Exactly(2),    // 1.付款总额；2.转账额; 3.销毁额对应的UTXO
-                    },
-                    assignments: none!(),
-                    validator: Some(LibSite::with(FN_NIA_BL_TRANSFER_OFFSET, nia_lib_bizlogic().id()))
-                },
-                name: fname!("blTransfer"),
             }
         },
         default_assignment: Some(OS_ASSET),
@@ -309,18 +303,20 @@ pub struct AutoBurnNonInflatableAsset;
 impl IssuerWrapper for AutoBurnNonInflatableAsset {
     type Wrapper<S: ContractStateRead> = Nia2Wrapper<S>;
 
-    fn schema() -> Schema { nia_schema() }
+    fn schema() -> Schema {
+        nia_schema()
+    }
 
-    fn types() -> TypeSystem { nia_standard_types().type_system(nia_schema()) }
+    fn types() -> TypeSystem {
+        nia_standard_types().type_system(nia_schema())
+    }
 
     fn scripts() -> Scripts {
         let interface_lib = nia2_lib_interface();
         let transfer_lib = nia_lib();
-        let bizlogic_lib = nia_lib_bizlogic();
         Confined::from_checked(bmap! {
             interface_lib.id() => interface_lib,
             transfer_lib.id() => transfer_lib,
-            bizlogic_lib.id() => bizlogic_lib
         })
     }
 }
@@ -432,7 +428,7 @@ mod test {
 
         assert_eq!(
             contract.contract_id().to_string(),
-            s!("rgb:J0wQQNFl-IiK4JG6-kqHg~hz-OZ3ik73-~uZuCCu-6_xwfwo")
+            s!("rgb:PKL2h6~d-3y8oRQS-kBtGp1O-jGKcEgf-weH~8Pu-gGXsPfs")
         );
     }
 }
